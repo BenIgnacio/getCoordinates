@@ -10,6 +10,11 @@
 
 #import "MainViewController.h"
 
+@interface AppDelegate ()
+    - (void) createEditableCopyOfDatabaseIfNeeded;
+
+@end
+
 @implementation AppDelegate
 
 @synthesize window = _window;
@@ -24,7 +29,11 @@
     // Override point for customization after application launch.
     self.mainViewController = [[MainViewController alloc] initWithNibName:@"MainViewController" bundle:nil];
     self.window.rootViewController = self.mainViewController;
+ 
+    //Do I not need this since I'm providing a db? This creates an empty db!
     self.mainViewController.managedObjectContext = self.managedObjectContext;
+
+    [self createEditableCopyOfDatabaseIfNeeded];
     [self.window makeKeyAndVisible];
     return YES;
 }
@@ -43,6 +52,7 @@
      Use this method to release shared resources, save user data, invalidate timers, and store enough application state information to restore your application to its current state in case it is terminated later. 
      If your application supports background execution, this method is called instead of applicationWillTerminate: when the user quits.
      */
+    [self saveContext];
 }
 
 - (void)applicationWillEnterForeground:(UIApplication *)application
@@ -135,8 +145,13 @@
     NSURL *storeURL = [[self applicationDocumentsDirectory] URLByAppendingPathComponent:@"SAMaudioGuide.sqlite"];
     
     NSError *error = nil;
+    
+    //migrate data
+    NSDictionary *options = [NSDictionary dictionaryWithObjectsAndKeys:[NSNumber numberWithBool:YES], NSMigratePersistentStoresAutomaticallyOption, [NSNumber numberWithBool:YES], NSInferMappingModelAutomaticallyOption, nil]; 
+    
+    
     __persistentStoreCoordinator = [[NSPersistentStoreCoordinator alloc] initWithManagedObjectModel:[self managedObjectModel]];
-    if (![__persistentStoreCoordinator addPersistentStoreWithType:NSSQLiteStoreType configuration:nil URL:storeURL options:nil error:&error])
+    if (![__persistentStoreCoordinator addPersistentStoreWithType:NSSQLiteStoreType configuration:nil URL:storeURL options:options error:&error])
     {
         /*
          Replace this implementation with code to handle the error appropriately.
@@ -176,6 +191,26 @@
 - (NSURL *)applicationDocumentsDirectory
 {
     return [[[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask] lastObject];
+}
+
+#pragma mark - Initialize our writable copy of the database
+
+- (void) createEditableCopyOfDatabaseIfNeeded {
+    // First test for existence - we don't want to wipe out a user's DB
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSURL *documentsDir = [self applicationDocumentsDirectory];
+    NSURL *writableDBPath = [documentsDir URLByAppendingPathComponent:@"SAMaudioGuide.sqlite"];
+    
+    BOOL dbExists = [fileManager fileExistsAtPath:[writableDBPath path]];
+    if (!dbExists) {
+        // The writable DB doesn't exist so we'll copy our default one there.
+        NSURL *defaultDBPath = [[NSBundle mainBundle] URLForResource:@"SAMaudioGuide" withExtension:@"sqlite"];
+        NSError *error;
+        BOOL success = [fileManager copyItemAtURL:defaultDBPath toURL:writableDBPath error:&error];
+        if (!success) {
+            NSAssert1(0, @"Failed to create writable database file with message '%@'.", [error localizedDescription]);
+        }
+    }
 }
 
 @end
